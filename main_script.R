@@ -27,10 +27,9 @@ obs_list <-
   
 # Give information on the parameters to estimate : 
 
-## Bounds and initial values for all parameters
+## Bounds for all parameters (obligatory and additional) (e.g. lb=c(p1=0, p2=0, ...); ub=c(p1=1, p2=5, ...))
 param_info_tot=list(lb=c(),
-                    ub=c(),
-                    init_values=c())
+                    ub=c())
 
 ## Names of obligatory parameters
 oblig_param_list <- c()

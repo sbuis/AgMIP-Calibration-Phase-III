@@ -48,12 +48,16 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
   while(!is.null(candidate_params)) {
     
     param_info <- lapply(param_info_tot,function(x) x[candidate_params])
-    param_names <- names(param_info$ub)
+   
+    print(paste("Estimated parameters:",paste(candidate_params,collapse=" ")))
     
-    print(paste("Estimated parameters:",paste(param_names,collapse=" ")))
-    
-    # initialize parameters with the values estimated for the best AIC obtained
-    param_info$init_values<-bind_rows(init_values[candidate_params],best_final_values)
+    # initialize addtional parameters with the values estimated for the best AIC obtained
+    init=setNames(data.frame(matrix(data=NA, ncol=length(candidate_params),nrow=optim_options$nb_rep)),
+                  candidate_params)
+    best_final_values <- tibble::tibble(!!!best_final_values) %>% dplyr::select(-all_of(oblig_param_list))
+    if (nrow(best_final_values)>0) {
+      param_info$init_values <- right_join(init,best_final_values[rep(1,optim_options$nb_rep)])
+    }
     
     optim_results <-     estim_param(obs_list=obs_list,
                                      model_function=model_function,
