@@ -14,8 +14,7 @@
 
 AIC <- function(obs_list, crit_value, param_nb) {
 
-  n <- length(obs_list)
-  m <- sum(sapply(obs_list,function(x) sum(!is.na(x[,-1]))))  # total number of observations
-  return(n*log(2*pi)+n*log(crit_value)+m+param_nb)
+  n <- sum(sapply(obs_list,function(x) sum(!is.na(x[,-1]))))  # total number of observations
+  return(n*log(crit_value/n)+2*param_nb)
 
 }
