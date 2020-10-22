@@ -3,6 +3,7 @@ if(!require("CroptimizR")){
   devtools::install_github("SticsRPacks/CroptimizR@*release")
   library("CroptimizR")
 }
+library(dplyr)				 
 
 source("R/AIC.R")
 source("R/select_param_FwdReg_AIC.R")
