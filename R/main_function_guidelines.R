@@ -28,6 +28,8 @@
 #' @param model_options List of options for the Crop Model wrapper (see help of
 #' the Crop Model wrapper function used).
 #' 
+#' @param digits Number of digits to take into account for outputs printing format
+#' 
 #' @return A data.frame containing for each set of candidate parameters, the names of the parameters 
 #' and the initial and final values of the parameters, the OLS criterion and of AIC
 #' 
@@ -36,7 +38,7 @@
 
 main_function_guidelines <- function(optim_options, oblig_param_list, add_param_list, 
                                      param_info_tot, obs_list, 
-                                     model_function, model_options) {
+                                     model_function, model_options, digits=3) {
   
   candidate_params <- oblig_param_list
   best_final_values <- setNames(data.frame(matrix(data=NA, ncol=length(candidate_params),nrow=0)),
@@ -54,9 +56,9 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
     # initialize addtional parameters with the values estimated for the best AIC obtained
     init=setNames(data.frame(matrix(data=NA, ncol=length(candidate_params),nrow=optim_options$nb_rep)),
                   candidate_params)
-    best_final_values <- tibble::tibble(!!!best_final_values) %>% dplyr::select(-all_of(oblig_param_list))
-    if (nrow(best_final_values)>0) {
-      param_info$init_values <- right_join(init,best_final_values[rep(1,optim_options$nb_rep)])
+    best_final_values <- tibble::tibble(!!!best_final_values) %>% dplyr::select(-any_of(oblig_param_list))
+    if (nrow(best_final_values)>0 && length(best_final_values)>0) {
+      param_info$init_values <- right_join(init,best_final_values[rep(1,optim_options$nb_rep),])
     }
     
     optim_results <-     estim_param(obs_list=obs_list,
@@ -68,7 +70,7 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
     
     
     optim_results$aic <- AIC(obs_list, optim_results$min_crit_value, 
-                             param_nb=length(param_info$ub))
+                             param_nb=length(candidate_params))
     if (optim_results$aic<min(prev_AIC)) {
       best_final_values<-optim_results$final_values
     }
@@ -77,15 +79,15 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
     save(optim_results, file = file.path(optim_options$path_results,
                                          paste0("optim_results_set",count,".Rdata")))
     file.copy(from="EstimatedVSinit.pdf",
-              to=paste0("EstimatedVSinit_et",count,".pdf"))
+              to=paste0("EstimatedVSinit_set",count,".pdf"))
     
-    print(paste("Values for the estimated parameters:",optim_results$final_values,
-                collapse=" "))
+    print(paste("Values for the estimated parameters:",paste(optim_results$final_values,
+                collapse=" ")))
     print(paste0("AIC =",optim_results$aic))
     
     df_outputs<-bind_rows(df_outputs,create_AgMIP_outputs(candidate_params, obs_list, 
                                                           optim_results, model_function, 
-                                                          model_options))
+                                                          model_options, digits))
     
     candidate_params <- select_param_FwdReg_AIC(oblig_param_list, add_param_list, 
                                                 candidate_params, optim_results$aic, 
@@ -99,9 +101,9 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
   save(df_outputs, file = file.path(optim_options$path_results,
                                     paste0("AgMIP_outputs.Rdata")))
   
-  df <- apply(df_outputs,2,as.character)
-  write.csv(df, sep=";", file=file.path(optim_options$path_results,
-                                        paste0("AgMIP_outputs.csv")))
+  df <- as.data.frame(sapply(df_outputs, as.character, simplify = FALSE))
+  write.table(df, sep=";", file=file.path(optim_options$path_results,
+                                          paste0("AgMIP_outputs.csv")), row.names=FALSE)
  
   return(df) 
 }
