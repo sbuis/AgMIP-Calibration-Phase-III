@@ -8,4 +8,4 @@ It contains:
 * main_script.R a template to be filled for the application of the AgMIP calibration phase III protocol on your own model and configuration. To use it you need a model wrapper for the CroptimizR package for your model (refer to the [Guidelines for implementing a crop model R wrapper for CroptimizR](https://sticsrpacks.github.io/CroptimizR/articles/Designing_a_model_wrapper.html)).
 * R folder: contains functions used in main_script.R
 
-**Preliminary version: please wait for the finalization of the AgMIP Calibration phaseII protocol before using these codes** 
+**Preliminary version: please wait for the finalization of the AgMIP Calibration phaseIII protocol before using these codes** 
