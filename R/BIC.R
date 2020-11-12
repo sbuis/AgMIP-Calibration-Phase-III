@@ -17,6 +17,6 @@ BIC <- function(obs_list, crit_value, param_nb) {
   # Total number of observations
   n <- sum(sapply(obs_list, function(x)  sum(!is.na(x %>% select(-Date)))))
   
-  return(n*log(crit_value/n) + param_nb*log(n)
+  return(n*log(crit_value/n) + param_nb*log(n))
 
 }

@@ -14,9 +14,21 @@
 #' 
 #' @param param_info_tot Information on all the candidate parameters to estimate.
 #' A list containing:
-#'    - (named) vectors of upper and lower bounds (`ub` and `lb`) (-Inf and Inf can be used),
-#'    - `init_values`, A data.frame containing initial values to test for the parameters 
+#'    - `ub` and `lb`: named vectors of upper and lower bounds, THAT WILL BE USED 
+#'    FOR CONSTRAINING THE RANGE OF PARAMETERS DURING MINIMIZATION PROCESS. 
+#'    Bounds must be defined FOR ALL parameters, set -Inf and Inf if you don't need 
+#'    to constrain the bounds.
+#'    - `init_values`, A data.frame containing initial values for the parameters.
+#'    One column per parameter, one line per repetition of the minimization.
+#'    Set it to NULL if you want all the initial values to be automatically sampled 
+#'    (within bounds `lb_initV` and `ub_initV`).
+#'    If you want to provide initial values for only a subpart of the parameters or repetitions, 
+#'    set NA for parameters and/or repetitions for which you do not provide values.
 #'
+#' @param lb_initV Named vector of parameters' lower bounds to use for sampling initial values
+#' 
+#' @param ub_initV Named vector of parameters' upper bounds to use for sampling initial values
+#' 
 #' @param obs_list List of observed values to use for parameter estimation
 #' A `named list` (names = situations names) of data.frame containing
 #' one column named Date with the dates (Date or POSIXct format) of the different observations
@@ -30,35 +42,70 @@
 #' 
 #' @param digits Number of digits to take into account for outputs printing format
 #' 
+#' @param info_crit_name Name of the information criterion to use for parameter selection ("AICc" or "BIC")
+#' 
 #' @return A data.frame containing for each set of candidate parameters, the names of the parameters 
-#' and the initial and final values of the parameters, the OLS criterion and of AIC
+#' and the initial and final values of the parameters, the OLS criterion and of the information criterion used.
 #' 
 #' This data.frame is also saved in csv and Rdata formats (AgMIP_outputs.* files, 
 #' saved in optim_options$path_results)
 
 main_function_guidelines <- function(optim_options, oblig_param_list, add_param_list, 
-                                     param_info_tot, obs_list, 
-                                     model_function, model_options, digits=3) {
+                                     param_info_tot, lb_initV=NULL, ub_initV=NULL, 
+                                     obs_list, model_function, model_options,
+                                     info_crit_name, digits=3) {
+  
+  # Checks
+  if (is.null(param_info_tot$lb) || is.null(param_info_tot$ub)) {
+    stop("param_info_tot$lb and param_info_tot$ub must be defined!")
+  } else if (any(sort(names(param_info_tot$lb))!=sort(names(param_info_tot$ub))) ||
+             any(sort(names(param_info_tot$lb))!=sort(c(oblig_param_list, add_param_list)))) {
+    stop("param_info_tot$lb and param_info_tot$ub must be defined for all candidate parameters (i.e. obligatory and additional ones)")
+  }
+  if (!is.null(param_info_tot$init_values)) {
+    if (any(sort(names(param_info_tot$init_values))!=sort(c(oblig_param_list, add_param_list)))) {
+      stop("If param_info_tot$init_values is provided, it must have a column for each candidate parameter 
+      (i.e. obligatory and additional ones). Fill this column with NA if you don't want to define initial values for this parameter.")
+    }
+  }
+  if ((is.null(lb_initV) || is.null(ub_initV)) && 
+      (nrow(param_info_tot$init_values)<model_options$nb_rep || any(is.na(param_info_tot$init_values)))) {
+    stop("Init_values must contain initial values for all parameters and repetitions if lb_initV and ub_initV are not provided.")
+  }
+  if (info_crit_name=="AICc") {
+    info_crit_func <- AICc
+  } else if (info_crit_name=="BIC") {
+    info_crit_func <- BIC
+  } else {
+    stop("info_crit_name must be AICc or BIC.")
+  }
+  
+  
+  param_info_tot$init_values <- complete_init_values(param_info_tot$init_values, 
+                                                     optim_options$nb_rep, 
+                                                     lb_initV, ub_initV, 
+                                                     optim_options$ranseed)
   
   candidate_params <- oblig_param_list
   best_final_values <- setNames(data.frame(matrix(data=NA, ncol=length(candidate_params),nrow=0)),
                                 candidate_params)
-  prev_AIC <- Inf
+  prev_info_crit <- Inf
   count<-1
   df_outputs<-NULL
   
   while(!is.null(candidate_params)) {
     
-    param_info <- lapply(param_info_tot,function(x) x[candidate_params])
-   
     print(paste("Estimated parameters:",paste(candidate_params,collapse=" ")))
     
-    # initialize addtional parameters with the values estimated for the best AIC obtained
-    init=setNames(data.frame(matrix(data=NA, ncol=length(candidate_params),nrow=optim_options$nb_rep)),
-                  candidate_params)
-    best_final_values <- tibble::tibble(!!!best_final_values) %>% dplyr::select(-any_of(oblig_param_list))
+    # initialize already estimated parameters with the values leading to the best criterion obtained so far
+    param_info <- lapply(param_info_tot,function(x) x[candidate_params])
     if (nrow(best_final_values)>0 && length(best_final_values)>0) {
-      param_info$init_values <- right_join(init,best_final_values[rep(1,optim_options$nb_rep),])
+#      param_info$init_values <- setNames(data.frame(matrix(data=NA, ncol=length(candidate_params),
+#                                                           nrow=optim_options$nb_rep)),
+#                                         candidate_params)
+      param_info$init_values[names(best_final_values)] <- best_final_values[rep(1,optim_options$nb_rep),]
+      new_candidate <- candidate_params[length(candidate_params)]
+      param_info$init_values[, new_candidate] <- param_info_tot$init_values[,new_candidate]
     }
     
     optim_results <-     estim_param(obs_list=obs_list,
@@ -69,41 +116,42 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
                                      param_info=param_info)
     
     
-    optim_results$aic <- AIC(obs_list, optim_results$min_crit_value, 
+    optim_results$info_crit <- info_crit_func(obs_list, optim_results$min_crit_value, 
                              param_nb=length(candidate_params))
-    if (optim_results$aic<min(prev_AIC)) {
-      best_final_values<-optim_results$final_values
+    if (optim_results$info_crit<min(prev_info_crit)) {
+      best_final_values <- tibble::tibble(!!!optim_results$final_values)
     }
     
     # Save and move results
     save(optim_results, file = file.path(optim_options$path_results,
                                          paste0("optim_results_set",count,".Rdata")))
     file.copy(from="EstimatedVSinit.pdf",
-              to=paste0("EstimatedVSinit_set",count,".pdf"))
+              to=paste0("EstimatedVSinit_set",count,".pdf"), overwrite = TRUE)
     
     print(paste("Values for the estimated parameters:",paste(optim_results$final_values,
                 collapse=" ")))
-    print(paste0("AIC =",optim_results$aic))
+    print(paste0(info_crit_name,"=",optim_results$info_crit))
     
     df_outputs<-bind_rows(df_outputs,create_AgMIP_outputs(candidate_params, obs_list, 
                                                           optim_results, model_function, 
-                                                          model_options, digits))
+                                                          model_options, info_crit_func, 
+                                                          info_crit_name, digits))
     
-    candidate_params <- select_param_FwdReg_AIC(oblig_param_list, add_param_list, 
-                                                candidate_params, optim_results$aic, 
-                                                prev_AIC)
-    prev_AIC <- c(prev_AIC, optim_results$aic)
+    candidate_params <- select_param_FwdReg(oblig_param_list, add_param_list, 
+                                            candidate_params, optim_results$info_crit, 
+                                            prev_info_crit)
+    prev_info_crit <- c(prev_info_crit, optim_results$info_crit)
     
     count <- count+1
   }
   
   # Save the results
   save(df_outputs, file = file.path(optim_options$path_results,
-                                    paste0("AgMIP_outputs.Rdata")))
+                                    paste0("phase3_",info_crit_name,"_Table4.Rdata")))
   
   df <- as.data.frame(sapply(df_outputs, as.character, simplify = FALSE))
   write.table(df, sep=";", file=file.path(optim_options$path_results,
-                                          paste0("AgMIP_outputs.csv")), row.names=FALSE)
+                                          paste0("phase3_",info_crit_name,"_Table4.csv")), row.names=FALSE)
  
   return(df) 
 }

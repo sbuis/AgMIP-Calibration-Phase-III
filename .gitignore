@@ -4,6 +4,5 @@
 .Ruserdata
 optim_results*.Rdata
 EstimatedVSinit*.pdf
-main_script_Stics.R
 AgMIP_outputs.*
 debug_crit_NA.Rdata

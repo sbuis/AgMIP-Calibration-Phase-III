@@ -14,14 +14,18 @@
 #' 
 #' @param digits Number of digits to take into account for outputs printing format
 #' 
+#' @param info_crit_func Function that computes the information criterion (AICc or BIC)
+#' 
+#' @param info_crit_name Name of the information criterion to use for parameter selection ("AICc" or "BIC")
+#' 
 #' @return A data.frame containing for each set of candidate parameters, the names of the parameters 
-#' and the initial and final values of the parameters, the OLS criterion and of AIC
+#' and the initial and final values of the parameters, the OLS criterion and of the information criterion.
 #' 
 
 create_AgMIP_outputs <- function(candidate_params, obs_list, optim_results, model_function, 
-                                 model_options, digits) {
+                                 model_options, info_crit_func, info_crit_name, digits) {
   
-  # Compute initial value of criterion and AIC (for the "best" repetition)
+  # Compute initial value of criterion and information criterion (for the "best" repetition)
   model_results <- model_function(model_options = model_options, 
                                   param_values = optim_results$init_values[optim_results$ind_min_crit,], 
                                   sit_names = names(obs_list),
@@ -29,19 +33,20 @@ create_AgMIP_outputs <- function(candidate_params, obs_list, optim_results, mode
   
   obs_sim_list <- CroptimizR:::intersect_sim_obs(model_results$sim_list, obs_list)
   init_crit <- crit_ols(obs_sim_list$sim_list, obs_sim_list$obs_list)
-  init_aic <- AIC(obs_sim_list$obs_list, init_crit, param_nb=length(candidate_params))
-  final_aic <- AIC(obs_list, optim_results$min_crit_value, param_nb=length(candidate_params))
+  init_info_crit <- info_crit_func(obs_sim_list$obs_list, init_crit, param_nb=length(candidate_params))
+  final_info_crit <- info_crit_func(obs_list, optim_results$min_crit_value, param_nb=length(candidate_params))
   
-  # Gather optim_resultsults
-  df <- data.frame(param_names=paste(candidate_params,collapse = ", "), 
-                   init_values=paste(format(optim_results$init_values[optim_results$ind_min_crit,], 
-                                            scientific=FALSE, digits=digits, nsmall=2), collapse=", "), 
-                   ini_crit=format(init_crit, scientific=FALSE, digits=digits, nsmall=2), 
-                   ini_aic=format(init_aic, scientific=FALSE, digits=digits, nsmall=2), 
-                   final_values=paste(format(optim_results$final_values, scientific=FALSE, digits=digits, nsmall=2),collapse=", "), 
-                   final_crit=format(optim_results$min_crit_value, scientific=FALSE, digits=digits, nsmall=2), 
-                   final_aic=format(final_aic, scientific=FALSE, digits=digits, nsmall=2))
-
+  # Gather optim_results
+  df <- setNames(data.frame(paste(candidate_params,collapse = ", "), 
+                            paste(format(optim_results$init_values[optim_results$ind_min_crit,], 
+                                         scientific=FALSE, digits=digits, nsmall=2), collapse=", "), 
+                            #ini_crit=format(init_crit, scientific=FALSE, digits=digits, nsmall=2), 
+                            #init_info_crit=format(init_info_crit, scientific=FALSE, digits=digits, nsmall=2), 
+                            paste(format(optim_results$final_values, scientific=FALSE, digits=digits, nsmall=2),collapse=", "), 
+                            format(optim_results$min_crit_value, scientific=FALSE, digits=digits, nsmall=2), 
+                            format(final_info_crit, scientific=FALSE, digits=digits, nsmall=2)),
+                 c("Estimated parameters","Initial parameter values","Final values",
+                   "Sum of squared errors",info_crit_name))
   return(df)
   
 }
