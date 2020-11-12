@@ -28,5 +28,3 @@ How to proceed?
   
   * execute main_script.R in Rstudio setting maxeval to a high value (>500)
  
-
-
