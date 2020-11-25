@@ -66,7 +66,7 @@ ub_initV <- c(stlevamf=700, stamflax=700, stflodrp=300, stlevdrp=2000, stdrpmat=
 
 # Define parameter estimation algorithm options
 optim_options=list(path_results = getwd(), # path where to store the results (graph and Rdata)
-                   nb_rep = 4)             # Number of repetitions of the minimization
+                   nb_rep = 4,             # Number of repetitions of the minimization
                    ranseed = 1234)         # set random seed so that each execution give the same results
                                            # If you want randomization, don't set it.
 optim_options$maxeval=1000
