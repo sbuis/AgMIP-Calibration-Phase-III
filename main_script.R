@@ -24,6 +24,10 @@ model_options <-
   
 # Select the observations for the parameter estimation
 # i.e. set obs_list here
+# obs_list must be a named list of data.frames or tibbles (similar to sim_list 
+# returned by the model wrapper, see ? estim_param for more information).
+# BE CAREFUL: data.frames/tibbles in obs_list MUST ONLY CONTAIN ONE COLUMN PER OBSERVED VARIABLE,
+# and ONE COLUMN "Date".The presence of any other column will perturbe the computation of AICc and BIC.
 obs_list <- 
 
   
