@@ -27,7 +27,11 @@
 #'
 select_param_FwdReg <- function(oblig_param_list, add_param_list, crt_list, crt_info_crit, prev_info_crit) {
 
-  if (crt_list[length(crt_list)]==add_param_list[length(add_param_list)]) { 
+  if (is.null(add_param_list)) {
+    
+    return(NULL)
+    
+  } else if (crt_list[length(crt_list)]==add_param_list[length(add_param_list)]) { 
     
     # we tested all parameters
     return(NULL)
