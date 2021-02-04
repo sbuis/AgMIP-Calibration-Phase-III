@@ -42,7 +42,7 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   # Initializations
   param_names <- names(param_values)
   results <- list(sim_list = setNames(vector("list",length(sit_names)), nm = sit_names), error=FALSE)
-
+  
   options(DSSAT.CSM = file.path(model_options$DSSAT_path,model_options$DSSAT_exe))
   project_path <- file.path(model_options$DSSAT_path,model_options$Crop)
   Genotype_path <- file.path(model_options$DSSAT_path,model_options$Genotype)
@@ -87,7 +87,8 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   for (situation in sit_names) {
     results$sim_list[[situation]] <- filter(pgro, TRNO==as.integer(situation))
   }
-  
+  attr(results$sim_list, "class")= "cropr_simulation"
+
   return(results)
   
 }
