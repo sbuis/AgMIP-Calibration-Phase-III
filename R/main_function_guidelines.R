@@ -40,30 +40,48 @@
 #' @param model_options List of options for the Crop Model wrapper (see help of
 #' the Crop Model wrapper function used).
 #' 
-#' @param digits Number of digits to take into account for outputs printing format
+#' @param digits (optional) Number of digits to take into account for outputs printing format
 #' 
 #' @param info_crit_name Name of the information criterion to use for parameter selection ("AICc" or "BIC")
+#' 
+#' @param satisfy_par_const (optional) Function for inequality constraints between parameters
+#' 
+#' @param forced_param_values_tot (optional) Vector of values of the parameters to force 
+#' when they are not estimated, if they have to take a value different from the model input files
 #' 
 #' @return A data.frame containing for each set of candidate parameters, the names of the parameters 
 #' and the initial and final values of the parameters, the OLS criterion and of the information criterion used.
 #' 
 #' This data.frame is also saved in csv and Rdata formats (AgMIP_outputs.* files, 
 #' saved in optim_options$path_results)
+#' 
+#' @details checkpoint_AICc_set#.Rdata (resp. checkpoint_BIC_set#.Rdata) files will be stored at the end of each step. 
+#' Renaming one of them in checkpoint_AICc.Rdata (resp. checkpoint_BIC.Rdata) and calling again main_function_guidelines
+#' will make the process restart from the next step (i.e. with the next candidate).
+#' 
 
 main_function_guidelines <- function(optim_options, oblig_param_list, add_param_list, 
                                      param_info_tot, lb_initV=NULL, ub_initV=NULL, 
                                      obs_list, model_function, model_options,
-                                     info_crit_name, digits=3) {
+                                     info_crit_name, digits=3, satisfy_par_const=NULL, 
+                                     forced_param_values_tot=NULL) {
+  path <- getwd()
+  crit_type <- info_crit_name
+  if (file.exists(paste0("checkpoint_",info_crit_name,".Rdata"))) {
+    
+    load(paste0("checkpoint_",info_crit_name,".Rdata"))
+    
+  } else {
   
   # Checks
   if (is.null(param_info_tot$lb) || is.null(param_info_tot$ub)) {
     stop("param_info_tot$lb and param_info_tot$ub must be defined!")
   } else if (any(sort(names(param_info_tot$lb))!=sort(names(param_info_tot$ub))) ||
-             any(sort(names(param_info_tot$lb))!=sort(c(oblig_param_list, add_param_list)))) {
+             !all(c(oblig_param_list, add_param_list) %in% names(param_info_tot$lb))) {
     stop("param_info_tot$lb and param_info_tot$ub must be defined for all candidate parameters (i.e. obligatory and additional ones)")
   }
   if (!is.null(param_info_tot$init_values)) {
-    if (any(sort(names(param_info_tot$init_values))!=sort(c(oblig_param_list, add_param_list)))) {
+    if (!all(c(oblig_param_list, add_param_list) %in% names(param_info_tot$init_values))) {
       stop("If param_info_tot$init_values is provided, it must have a column for each candidate parameter 
       (i.e. obligatory and additional ones). Fill this column with NA if you don't want to define initial values for this parameter.")
     }
@@ -84,7 +102,8 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
   param_info_tot$init_values <- complete_init_values(param_info_tot$init_values, 
                                                      optim_options$nb_rep, 
                                                      lb_initV, ub_initV, 
-                                                     optim_options$ranseed)
+                                                     optim_options$ranseed,
+                                                     satisfy_par_const)
   
   candidate_params <- oblig_param_list
   best_final_values <- setNames(data.frame(matrix(data=NA, ncol=length(candidate_params),nrow=0)),
@@ -92,6 +111,8 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
   prev_info_crit <- Inf
   count<-1
   df_outputs<-NULL
+  
+  }
   
   while(!is.null(candidate_params)) {
     
@@ -108,13 +129,22 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
       param_info$init_values[, new_candidate] <- param_info_tot$init_values[,new_candidate]
     }
     
+
+    # Handle forced values of parameters (filter candidate from forced_param_values if there are some)
+    forced_param_values <- forced_param_values_tot
+    inter_forc_cand <- names(forced_param_values) %in% candidate_params
+    if (any(inter_forc_cand)) {
+      forced_param_values <- forced_param_values_tot[-which(inter_forc_cand)]
+    }
+    
     optim_results <-     estim_param(obs_list=obs_list,
                                      model_function=model_function,
                                      model_options=model_options,
                                      optim_options=optim_options,
                                      crit_function=crit_ols,
-                                     param_info=param_info)
-    
+                                     param_info=param_info,
+                                     satisfy_par_const=satisfy_par_const, 
+                                     forced_param_values=forced_param_values)
     
     optim_results$info_crit <- info_crit_func(obs_list, optim_results$min_crit_value, 
                              param_nb=length(candidate_params))
@@ -124,9 +154,16 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
     
     # Save and move results
     save(optim_results, file = file.path(optim_options$path_results,
-                                         paste0("optim_results_set",count,".Rdata")))
-    file.copy(from="EstimatedVSinit.pdf",
-              to=paste0("EstimatedVSinit_set",count,".pdf"), overwrite = TRUE)
+                                         paste0("optim_results_",info_crit_name,"_set",count,".Rdata")))
+    file.rename(from="EstimatedVSinit.pdf", to=paste0("EstimatedVSinit_",info_crit_name,"_set",count,".pdf"))
+
+    # Plot simulations versus observations
+    model_results <- model_function(model_options = model_options, 
+                                    param_values = unlist(c(forced_param_values, 
+                                                            optim_results$final_values)),
+                                    sit_var_dates_mask = obs_list)    
+    p<- plot(model_results$sim_list,obs=obs_list, type = "scatter", all_situations = TRUE)
+    plot_save(plot = p, path = optim_options$path_results,suffix = paste0("_scatter_",info_crit_name,"_set",count))
     
     print(paste("Values for the estimated parameters:",paste(optim_results$final_values,
                 collapse=" ")))
@@ -135,7 +172,8 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
     df_outputs<-bind_rows(df_outputs,create_AgMIP_outputs(candidate_params, obs_list, 
                                                           optim_results, model_function, 
                                                           model_options, info_crit_func, 
-                                                          info_crit_name, digits))
+                                                          info_crit_name, digits,
+                                                          forced_param_values=forced_param_values))
     
     candidate_params <- select_param_FwdReg(oblig_param_list, add_param_list, 
                                             candidate_params, optim_results$info_crit, 
@@ -143,7 +181,14 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
     prev_info_crit <- c(prev_info_crit, optim_results$info_crit)
     
     count <- count+1
+    
+    #save(list = ls(all.names = TRUE), file = file.path(path,"checkpoint.Rdata"), envir = 
+    #       environment())
+    save(crit_type, candidate_params, prev_info_crit, best_final_values, count, file = file.path(path,paste0("checkpoint_",info_crit_name,"_set",count-1,".Rdata")), envir = 
+           environment())
+    
   }
+
   
   # Save the results
   save(df_outputs, file = file.path(optim_options$path_results,

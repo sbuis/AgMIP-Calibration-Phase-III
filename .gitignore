@@ -6,3 +6,7 @@ optim_results*.Rdata
 EstimatedVSinit*.pdf
 AgMIP_outputs.*
 debug_crit_NA.Rdata
+phase3_*.csv
+phase3_*.Rdata
+all_situations*.png
+checkpoint*.Rdata

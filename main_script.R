@@ -3,6 +3,10 @@ if(!require("CroptimizR")){
   devtools::install_github("SticsRPacks/CroptimizR@*release")
   library("CroptimizR")
 }
+if(!require("CroPlotR")){
+  devtools::install_github("SticsRPacks/CroPlotR@*release")
+  library("CroPlotR")
+}
 library(dplyr)				 
 
 source("R/AICc.R")

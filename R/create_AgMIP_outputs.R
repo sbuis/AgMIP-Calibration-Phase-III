@@ -18,16 +18,20 @@
 #' 
 #' @param info_crit_name Name of the information criterion to use for parameter selection ("AICc" or "BIC")
 #' 
+#' @param forced_param_values (optional) Vector of values of the parameters to force 
+#' when they are not estimated, if they have to take a value different from the model input files
+#' 
 #' @return A data.frame containing for each set of candidate parameters, the names of the parameters 
 #' and the initial and final values of the parameters, the OLS criterion and of the information criterion.
 #' 
 
 create_AgMIP_outputs <- function(candidate_params, obs_list, optim_results, model_function, 
-                                 model_options, info_crit_func, info_crit_name, digits) {
+                                 model_options, info_crit_func, info_crit_name, digits, 
+                                 forced_param_values=NULL) {
   
   # Compute initial value of criterion and information criterion (for the "best" repetition)
   model_results <- model_function(model_options = model_options, 
-                                  param_values = optim_results$init_values[optim_results$ind_min_crit,], 
+                                  param_values = unlist(c(forced_param_values, optim_results$init_values[optim_results$ind_min_crit,])), 
                                   sit_names = names(obs_list),
                                   sit_var_dates_mask = obs_list)    
   
