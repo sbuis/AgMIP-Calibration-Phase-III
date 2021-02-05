@@ -30,9 +30,11 @@ create_AgMIP_outputs <- function(candidate_params, obs_list, optim_results, mode
                                  forced_param_values=NULL) {
   
   # Compute initial value of criterion and information criterion (for the "best" repetition)
+  var_names <- setdiff(unique(unlist(lapply(obs_list, names))),"Date")
   model_results <- model_function(model_options = model_options, 
                                   param_values = unlist(c(forced_param_values, optim_results$init_values[optim_results$ind_min_crit,])), 
                                   sit_names = names(obs_list),
+								  var_names = var_names,
                                   sit_var_dates_mask = obs_list)    
   
   obs_sim_list <- CroptimizR:::intersect_sim_obs(model_results$sim_list, obs_list)

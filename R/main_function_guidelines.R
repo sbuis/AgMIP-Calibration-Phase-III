@@ -158,10 +158,13 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
     file.rename(from="EstimatedVSinit.pdf", to=paste0("EstimatedVSinit_",info_crit_name,"_set",count,".pdf"))
 
     # Plot simulations versus observations
+	var_names <- setdiff(unique(unlist(lapply(obs_list, names))),"Date")
     model_results <- model_function(model_options = model_options, 
                                     param_values = unlist(c(forced_param_values, 
                                                             optim_results$final_values)),
-                                    sit_var_dates_mask = obs_list)    
+                                    sit_names = names(obs_list),
+                                    sit_var_dates_mask = obs_list,
+									var_names = var_names)    
     p<- plot(model_results$sim_list,obs=obs_list, type = "scatter", all_situations = TRUE)
     plot_save(plot = p, path = optim_options$path_results,suffix = paste0("_scatter_",info_crit_name,"_set",count))
     
