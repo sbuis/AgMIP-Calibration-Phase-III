@@ -17,9 +17,9 @@ if(!require("dplyr")){
   install.packages("dplyr")
   library("dplyr")
 }
-if(!require("readxl")){
-  install.packages("readxl")
-  library("readxl")
+if(!require("readr")){
+  install.packages("readr")
+  library("readr")
 }
 if(!require("tidyr")){
   install.packages("tidyr")
@@ -69,7 +69,7 @@ model_options$cultivar <-      # e.g. "CSIR01"
 # and ONE COLUMN "Date".The presence of any other column will perturbe the computation of AICc and BIC.
 
 ## for the Australian case :
-obs_data <- read_excel("training Zadoks dates.xlsx", sheet = "training data dates")
+obs_data <- read_tsv("training Zadoks dates_v2_DSSAT.txt")
 obs_data_final <- obs_data %>% gather(GSTD, Date, Zadok1:Zadok100) %>%
   mutate(GSTD = as.numeric(gsub("Zadok", "", GSTD))) %>%
   mutate(Date = as.POSIXct(Date,format="%d/%m/%Y", tz="UTC")) %>%
@@ -82,7 +82,8 @@ names(obs_list) <- sapply(obs_list, function(x) x$situation[1])
 obs_list <- lapply(obs_list, function(x) select(x,!situation))
 obs_list <- lapply(obs_list,function(x) x[!duplicated(x$Date),])  # filter observations that have the same dates
 
-
+# If you want to take into account only a sub-part of the observed stages, e.g. GSTD==30 and GTD==55, proceed as in the following line
+# obs_list <- lapply(obs_list, function(x) filter(x,GSTD==30 | GSTD==55))
   
 # Give information on the parameters to estimate : 
 
