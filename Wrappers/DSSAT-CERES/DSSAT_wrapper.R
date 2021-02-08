@@ -83,7 +83,7 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   run_dssat() # Run DSSAT-CSM
   
   # Read its outputs and store them in CroptimizR format
-  pgro <- read_output("PlantGro.OUT") %>% mutate(Date=DATE)
+  pgro <- read_output("PlantGro.OUT") %>% mutate(Date=DATE) %>% select(-DATE)
   for (situation in sit_names) {
     results$sim_list[[situation]] <- filter(pgro, TRNO==as.integer(situation))
   }
