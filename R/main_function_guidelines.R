@@ -155,10 +155,10 @@ main_function_guidelines <- function(optim_options, oblig_param_list, add_param_
     # Save and move results
     save(optim_results, file = file.path(optim_options$path_results,
                                          paste0("optim_results_",info_crit_name,"_set",count,".Rdata")))
-    file.rename(from="EstimatedVSinit.pdf", to=paste0("EstimatedVSinit_",info_crit_name,"_set",count,".pdf"))
+    file.rename(from=file.path(optim_options$path_results,"EstimatedVSinit.pdf"), to=file.path(optim_options$path_results,paste0("EstimatedVSinit_",info_crit_name,"_set",count,".pdf")))
 
     # Plot simulations versus observations
-	var_names <- setdiff(unique(unlist(lapply(obs_list, names))),"Date")
+  	var_names <- setdiff(unique(unlist(lapply(obs_list, names))),"Date")
     model_results <- model_function(model_options = model_options, 
                                     param_values = unlist(c(forced_param_values, 
                                                             optim_results$final_values)),
