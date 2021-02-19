@@ -39,7 +39,25 @@
 #' 
 DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   
+  on.exit({
+    # set the parameters file to their original values
+    if (flag_eco_param) {
+      res <- file.rename(from=file.path(Genotype_path,paste0(ecotype_filename,"_tmp")),to=file.path(Genotype_path,ecotype_filename))
+      if (!res) {
+        stop(paste("Unable to rename ",file.path(Genotype_path,paste0(ecotype_filename,"_tmp")),"in ",file.path(Genotype_path,ecotype_filename),
+                   ".\n This may alter the following results. Please allow write permissions on",file.path(Genotype_path,ecotype_filename)))
+      }
+    }
+    if (flag_cul_param) {
+      res <- file.rename(from=file.path(Genotype_path,paste0(cultivar_filename,"_tmp")),to=file.path(Genotype_path,cultivar_filename))
+      if (!res) {
+        stop(paste("Unable to rename ",file.path(Genotype_path,paste0(cultivar_filename,"_tmp")),"in ",file.path(Genotype_path,cultivar_filename),
+                   ".\n This may alter the following results. Please allow write permissions on",file.path(Genotype_path,cultivar_filename)))
+      }
+    }
+  })
   # Initializations
+  flag_eco_param = FALSE; flag_cul_param = FALSE
   param_names <- names(param_values)
   results <- list(sim_list = setNames(vector("list",length(sit_names)), nm = sit_names), error=FALSE)
   
@@ -50,11 +68,17 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   ecotype_filename <- model_options$ecotype_filename
   cultivar_filename <- model_options$cultivar_filename
   ecotype <- model_options$ecotype
+  cultivar <- model_options$cultivar
   
   # Force ecotype parameters if provided in param_values
   if (!is.null(param_values)) {
     eco <- read_eco(file.path(Genotype_path,ecotype_filename))	  # read ecotype DSSAT file => put results in eco data.frame
     if (any (param_names %in% names(eco))) {   # if some parameters in param_values are ecotype parameters
+      res <- file.copy(from=file.path(Genotype_path,ecotype_filename),to=file.path(Genotype_path,paste0(ecotype_filename,"_tmp")),overwrite = TRUE)
+      if (!res) {
+        stop(paste("Unable to copy ",file.path(Genotype_path,ecotype_filename)))
+      }
+      flag_eco_param = TRUE
       eco_paramNames <- intersect(param_names, names(eco))
       idx <- which(eco$`ECO#`==ecotype)
       for (param in eco_paramNames) {   # modify their values in the eco data.frame
@@ -68,6 +92,11 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   if (!is.null(param_values)) {
     cul <- read_cul(file.path(Genotype_path,cultivar_filename)) 
     if (any (param_names %in% names(cul))) {
+      res <- file.copy(from=file.path(Genotype_path,cultivar_filename),to=file.path(Genotype_path,paste0(cultivar_filename,"_tmp")),overwrite = TRUE)
+      if (!res) {
+        stop(paste("Unable to copy ",file.path(Genotype_path,cultivar_filename)))
+      }
+      flag_cul_param = TRUE
       cul_paramNames <- intersect(param_names, names(cul))
       idx <- which(cul$`VAR#`==cultivar)
       for (param in cul_paramNames) {
@@ -83,11 +112,24 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   run_dssat() # Run DSSAT-CSM
   
   # Read its outputs and store them in CroptimizR format
-  pgro <- read_output("PlantGro.OUT") %>% mutate(Date=DATE) %>% select(-DATE)
-  for (situation in sit_names) {
-    results$sim_list[[situation]] <- filter(pgro, TRNO==as.integer(situation))
+  if (file.exists("PlantGro.OUT")) {
+    pgro <- read_output("PlantGro.OUT") %>% mutate(Date=DATE) %>% select(-DATE)
+    if (!all(as.integer(sit_names) %in% pgro$TRNO)) {
+      results$error=TRUE
+      warning(paste("Treatment(s) number",paste0(setdiff(as.integer(sit_names), pgro$TRNO), collapse=",")," were missing in the DSSAT output file PlantGro.OUT."))
+    }
+    for (situation in sit_names) {
+      results$sim_list[[situation]] <- filter(pgro, TRNO==as.integer(situation))
+    }
+    attr(results$sim_list, "class")= "cropr_simulation"
+    
+    # Remove PlantGro.OUT file to be able to check if it is created for next model runs.
+    file.remove("PlantGro.OUT")
+    
+  } else {
+    results$error=TRUE
+    warning("DSSAT output file PlantGro.OUT has not been generated.")
   }
-  attr(results$sim_list, "class")= "cropr_simulation"
 
   return(results)
   
