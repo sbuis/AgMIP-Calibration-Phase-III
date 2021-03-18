@@ -84,24 +84,28 @@ ub_initV <- c()
 
 # Define parameter estimation algorithm options
 optim_options=list(path_results = getwd(), # path where to store the results (graph and Rdata)
-                   nb_rep = 4,             # Number of repetitions of the minimization
+                   # nb_rep = 4,             # Number of repetitions of the minimization -> NO MORE USED, USE nb_rep variable instead (see here-after)
                    ranseed = 1234,         # set random seed so that each execution give the same results
                                            # If you want randomization, don't set it.
                    maxeval=500)            # Maximal number of criterion evaluation
                                            # SET IT TO A LOW VALUE (e.g. 3) TO TEST THE SCRIPT to dramatically 
-										   # reduce computational cost
+										                       # reduce computational cost
                                            # SET IT TO A LARGE VALUE (> 500) FOR REAL APPLICATION OF THE PROTOCOL 
 							
-							
+# Number of repetitions: if nb_rep includes only one value, all steps will use the same number of repetitions
+#                        if nb_rep includes 2 values, the first step will use the first value as repetition number and ALL the others will use the second values
+#                        otherwise, nb_rep can include as many values as number of steps if you want to define different values for each step
+nb_rep <- c(20,5) 
+
 ##########################################
 
+main_function_guidelines(optim_options, oblig_param_list, add_param_list, 
+                         param_info_tot, lb_initV, ub_initV, obs_list, 
+                         model_function, model_options, info_crit_name="AICc", nb_rep=nb_rep)
 
 main_function_guidelines(optim_options, oblig_param_list, add_param_list, 
                          param_info_tot, lb_initV, ub_initV, obs_list, 
-                         model_function, model_options, info_crit_name="AICc")
+                         model_function, model_options, info_crit_name="BIC", nb_rep=nb_rep)
 
-main_function_guidelines(optim_options, oblig_param_list, add_param_list, 
-                         param_info_tot, lb_initV, ub_initV, obs_list, 
-                         model_function, model_options, info_crit_name="BIC")
-						 
+
 print(paste0("Results saved in ",optim_options$path_results))

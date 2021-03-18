@@ -41,7 +41,7 @@ complete_init_values <- function(init_values, nb_rep, lb, ub, ranseed, satisfy_p
     }
     for (param in param_names) {
       idx <- which(!is.na(init_values[,param]))
-      sampled_values[idx,param] <- init_values[idx,param]
+      sampled_values[idx[1:min(nb_rep,length(idx))],param] <- init_values[idx[1:min(nb_rep,length(idx))],param]
     }
   } else {
     if (nrow(init_values)<nb_rep || any(is.na(init_values))) {
