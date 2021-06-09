@@ -36,6 +36,8 @@
 #' ecotype and cultivar could be retrieved from project_file and sit_names but seems 
 #' that reading project_file can be time consuming ...
 #' 
+#' @importFrom wrapr seqi
+#' @importFrom lubridate year
 #' 
 DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   
@@ -58,6 +60,9 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   })
   # Initializations
   flag_eco_param = FALSE; flag_cul_param = FALSE
+  if (!is.null(model_options$add_forced_param)) {
+    param_values <- model_options$add_forced_param(param_values) # user function to force some parameters from the values of those provided in param_values
+  }
   param_names <- names(param_values)
   results <- list(sim_list = setNames(vector("list",length(sit_names)), nm = sit_names), error=FALSE)
   
@@ -100,7 +105,11 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
       cul_paramNames <- intersect(param_names, names(cul))
       idx <- which(cul$`VAR#`==cultivar)
       for (param in cul_paramNames) {
-        cul[idx,param] <- param_values[param]  
+        if (is.character(cul[[param]])) {
+          cul[idx,param] <- as.character(round(param_values[[param]],digits = 2)) 
+        } else {
+          cul[idx,param] <- param_values[param] 
+        }
       }
       write_cul(cul,file.path(Genotype_path,cultivar_filename))
     }
@@ -109,17 +118,71 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   # Run the model
   setwd(project_path)
   write_dssbatch(x=project_file,trtno=as.integer(sit_names)) # Generate a DSSAT batch file with function arguments
-  run_dssat() # Run DSSAT-CSM
+
+  count=1
+  while (!file.exists("PlantGro.OUT") && count<10) {
+    run_dssat() # Run DSSAT-CSM
+    count <- count+1
+  }
   
   # Read its outputs and store them in CroptimizR format
   if (file.exists("PlantGro.OUT")) {
-    pgro <- read_output("PlantGro.OUT") %>% mutate(Date=DATE) %>% select(-DATE)
-    if (!all(as.integer(sit_names) %in% pgro$TRNO)) {
-      results$error=TRUE
-      warning(paste("Treatment(s) number",paste0(setdiff(as.integer(sit_names), pgro$TRNO), collapse=",")," were missing in the DSSAT output file PlantGro.OUT."))
+    pgroTot <- read_output("PlantGro.OUT") %>% mutate(Date=DATE) %>% select(-DATE)
+    if (!all(as.integer(sit_names) %in% pgroTot$TRNO)) {
+      run_dssat() # Run DSSAT-CSM run again
+      if (file.exists("PlantGro.OUT")) {
+        pgroTot <- read_output("PlantGro.OUT") %>% mutate(Date=DATE) %>% select(-DATE)
+      
+      if (!all(as.integer(sit_names) %in% pgroTot$TRNO)) {
+       results$error=TRUE
+      warning(paste("Treatment(s) number",paste0(setdiff(as.integer(sit_names), pgroTot$TRNO), collapse=",")," were missing in the DSSAT output file PlantGro.OUT."))
+    }
+      }
     }
     for (situation in sit_names) {
-      results$sim_list[[situation]] <- filter(pgro, TRNO==as.integer(situation))
+      
+      pgro <- filter(pgroTot, TRNO==as.integer(situation))
+      pgro <- pgro[!duplicated(pgro$Date),]  # DSSAT sometimes include replicated lines in the .out file ...
+      results$sim_list[[situation]] <- pgro
+      
+      # Create variables that contain Zadok phenological stages in julian days (computed from the 1st of Jan of the sowing Year)
+      zadok_df <- getIntGSTD(pgro$GSTD)
+      zadok_df$dates <- pgro$Date[zadok_df$firstIndex]
+      zadok_df$julDay <- julian(zadok_df$dates,origin=as.Date(paste(lubridate::year(zadok_df$dates[1]),"01","01",sep = "-")))
+      
+      ZlistNonFloored <- data.frame(Zadok=pgro$GSTD, julDay=julian(pgro$Date,origin=as.Date(paste(lubridate::year(zadok_df$dates[1]),"01","01",sep = "-"))))
+      
+      # interpolate julian days for non simulated zadok stages between first and last zadok simulated
+      missingZadok <- setdiff(zadok_df$Zadok[1]:zadok_df$Zadok[length(zadok_df$Zadok)],zadok_df$Zadok)
+      interpJulDays <- sapply(missingZadok, function(x) interp(x,ZlistNonFloored))
+      zadok_df$firstIndex <- NULL
+      tmp <- data.frame(Zadok=missingZadok, julDay=interpJulDays, dates=NA)
+      
+      zadok_df <- rbind(zadok_df,tmp)
+      zadok_df <- zadok_df[order(zadok_df$Zadok),]
+      
+      # Extrapolate julian days for Zadok stages posterior to these simulated (to take them into account if they are observed but not simulated ...)
+      missingZadok <- wrapr::seqi(max(zadok_df$Zadok)+1,100)
+      endDate <- as.POSIXct(paste(lubridate::year(pgro$Date[nrow(pgro)]),"12","31",sep = "-"),format="%Y-%m-%d", tz="UTC")
+      
+      if (length(missingZadok)>0) {
+        julianEndOfYear <- julian(as.Date(endDate), 
+                                  origin=as.Date(paste(lubridate::year(zadok_df$dates[1]),"01","01",sep = "-")))
+        
+        dftmp <- data.frame(Zadok=missingZadok, julDay=julianEndOfYear[1], dates=NA)
+        zadok_df <- rbind(zadok_df,dftmp)
+      }
+      
+      df=as.data.frame(as.list(setNames(as.numeric(zadok_df$julDay),paste0("Zadok",zadok_df$Zadok))))
+      
+      if (!(endDate %in% results$sim_list[[situation]]$Date)) {
+        results$sim_list[[situation]] <- 
+          dplyr::bind_rows(results$sim_list[[situation]],data.frame(Date=endDate))
+      }
+      
+      results$sim_list[[situation]] <- 
+        dplyr::bind_cols(results$sim_list[[situation]],df)
+      
     }
     attr(results$sim_list, "class")= "cropr_simulation"
     
@@ -134,3 +197,19 @@ DSSAT_wrapper <- function( param_values=NULL, sit_names, model_options, ...) {
   return(results)
   
 }
+
+
+# Extract rounded values for GSTD and their index in the GSTD list
+getIntGSTD <- function(GSTD) { u <- unique(floor(GSTD)) ; data.frame(Zadok=u, firstIndex=match(u, floor(GSTD)))}
+
+interp <- function(ZadokStage,ZList) {
+  # Interpolate the julian day of a Zadok stage from julian days of other Zadok stages
+  # ZadokStage is the ZadokSateg to interpolate
+  # ZList is a list containing a vector named Zadok and a vector named julDay, containing the Zadok stages and their associated julian days
+  inf <- which(ZadokStage > ZList$Zadok)
+  sup <- which(ZadokStage < ZList$Zadok)
+  tmp <- (ZList$julDay[sup[1]]-ZList$julDay[inf[length(inf)]]) * (ZadokStage - ZList$Zadok[inf[length(inf)]]) /
+    (ZList$Zadok[sup[1]]-ZList$Zadok[inf[length(inf)]])+ZList$julDay[inf[length(inf)]]
+  return(tmp)
+}
+

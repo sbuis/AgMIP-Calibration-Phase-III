@@ -1,34 +1,16 @@
-#
-# This script runs the AgMIP phaseIII protocol for Australian dataset for the DSSAT-CERES model
-# It needs the "training Zadoks dates.xlsx" file for reading observations.
-# IT IS JUST A TEMPLATE : some information must be filled before running it (see below)
-#
-
 # Install / Load needed libraries and functions
-if(!require("CroptimizR")){
-  devtools::install_github("SticsRPacks/CroptimizR@*release")
-  library("CroptimizR")
-}
-if(!require("CroPlotR")){
-  devtools::install_github("SticsRPacks/CroPlotR@*release")
-  library("CroPlotR")
-}
-if(!require("dplyr")){
-  install.packages("dplyr")
-  library("dplyr")
-}
-if(!require("readr")){
-  install.packages("readr")
-  library("readr")
-}
-if(!require("tidyr")){
-  install.packages("tidyr")
-  library("tidyr")
-}
-if(!require("DSSAT")){
-  install.packages("DSSAT")
-  library("DSSAT")
-}
+#  devtools::install_github("SticsRPacks/CroptimizR")
+
+
+library("CroptimizR") 
+#}
+
+library("dplyr")		
+library("readxl")
+library("tidyr")
+library("DSSAT")
+library("CroPlotR")
+library("lubridate")
 
 source("R/AICc.R")
 source("R/BIC.R")
@@ -36,30 +18,28 @@ source("R/select_param_FwdReg.R")
 source("R/main_function_guidelines.R")
 source("R/create_AgMIP_outputs.R")
 source("R/complete_init_values.R")
+source("DSSAT_wrapper.R")
 
 
 ########## TO BE ADAPTED TO YOUR CASE ....
 
 # Define your model and associated options
 # i.e. model_options argument given to estim_param that depends on your model wrapper 
-# see description of DSSAT_wrapper function arguments in DSSAT_wrapper.R
-
-source("DSSAT_wrapper.R")
-model_function <- DSSAT_wrapper
+model_function <- DSSAT_wrapper 
 
 model_options <- vector("list")
-model_options$DSSAT_path <-    # e.g. 'C:\\DSSAT47'
-model_options$DSSAT_exe <-     # e.g. 'DSCSM047.EXE'
+model_options$DSSAT_path <- 'C:\\DSSAT47'   
+model_options$DSSAT_exe <- 'DSCSM047.EXE'   
 model_options$Crop <- "Wheat"
 model_options$Genotype <- "Genotype" 
-model_options$ecotype_filename <-  # e.g. "WHCER047.ECO"
-model_options$cultivar_filename <- # e.g. "WHCER047.CUL"
+model_options$ecotype_filename <- "WHCER047.ECO"  
+model_options$cultivar_filename <- "WHCER047.CUL" 
 
 # Adapt to Australian or French dataset case ...
-model_options$project_file <-  # e.g. 'CSIR1066.WHX'
-model_options$ecotype <-       # e.g. "AUWH01"
-model_options$cultivar <-      # e.g. "CSIR01"
- 
+model_options$project_file <- 'AUST0124.WHX'  # e.g. 'CSIR1066.WHX', 'AUST0124.WHX'
+model_options$ecotype <- "AUWH01"      # e.g. UKWH03 "AUWH01"
+model_options$cultivar <- "AU0001"     # Apache "AU0001","FR1801"
+
 
 # Select the observations for the parameter estimation
 # i.e. set obs_list here
@@ -68,26 +48,74 @@ model_options$cultivar <-      # e.g. "CSIR01"
 # BE CAREFUL: data.frames/tibbles in obs_list MUST ONLY CONTAIN ONE COLUMN PER OBSERVED VARIABLE,
 # and ONE COLUMN "Date".The presence of any other column will perturbe the computation of AICc and BIC.
 
-## for the Australian case :
-obs_data <- read_tsv("training Zadoks dates_v2_DSSAT.txt")
-obs_data_final <- obs_data %>% gather(GSTD, Date, Zadok1:Zadok100) %>%
-  mutate(GSTD = as.numeric(gsub("Zadok", "", GSTD))) %>%
-  mutate(Date = as.POSIXct(Date,format="%d/%m/%Y", tz="UTC")) %>%
+####### set "F" for french dataset or "A" for Australian dataset ##########
+data="A" # "A" or "F"
+
+pathObsFile <- 
+  
+selected_stages <- NULL
+if (data=="F") {
+  obs_data <- read_excel(file.path(pathObsFile,"FrancetrainingZadoksdates.xlsx"),
+                         sheet = "Apache")
+} else if (data=="A") {
+  filename <- file.path(pathObsFile,"training Zadoks dates_v2_DSSAT.txt")
+print(filename)
+    obs_data <- read.table(file = filename,sep = "\t",row.names = NULL,header = TRUE, stringsAsFactors=FALSE)
+  
+  ############### HERE SOME PARTICULAR STAGES ARE SELECTED, COMMENT THE LINE IF YOU WANT TO USE ALL OBSERVED STAGES  ####################
+  selected_stages <- c("Zadok30","Zadok65","Zadok90")  
+}
+
+format="%d/%m/%Y"
+obs_data_final <- obs_data %>% mutate(Orig = as.Date(paste(year(as.Date(sowDay, format=format)),"01","01",sep="-"))) %>% 
+  rowwise() %>% 
+  mutate(across(grep("Zadok",names(obs_data),value=TRUE), function(x) julian(as.Date(x,format=format), origin=Orig))) %>%
+  mutate(Date = as.POSIXct(paste(Year,"12","31",sep="-"),format="%Y-%m-%d", tz="UTC")) %>%  
   filter(!is.na(Date)) %>%
   mutate(situation=TRNO)
+if (is.null(selected_stages)) {
+  selected_stages_idx <- grep("Zadok",names(obs_data_final))
+} else {
+  selected_stages_idx <- which(names(obs_data_final) %in% selected_stages)
+}
 obs_list <- obs_data_final %>%
-  select(Date, GSTD, situation) %>%
-  group_split(situation)
+  select(Date, situation, selected_stages_idx) %>%
+  as_tibble() %>% group_split(situation)
+
+
 names(obs_list) <- sapply(obs_list, function(x) x$situation[1])
 obs_list <- lapply(obs_list, function(x) select(x,!situation))
 obs_list <- lapply(obs_list,function(x) x[!duplicated(x$Date),])  # filter observations that have the same dates
+obs_list <- lapply(obs_list,function(x) x %>% select_if(~!all(is.na(.))))  # filter NA
+obs_list[sapply(obs_list,length)==1] <- NULL  # filter non observed situations
+
 
 # If you want to take into account only a sub-part of the observed stages, e.g. GSTD==30 and GTD==55, proceed as in the following line
 # obs_list <- lapply(obs_list, function(x) filter(x,GSTD==30 | GSTD==55))
-  
+
+#-------------
+## for the Australian case :
+#obs_data <- read_tsv("C:/JQ2020/AgMIPCalibration/training Zadoks dates_v2_DSSAT.txt")
+#obs_data_final <- obs_data %>% gather(GSTD, Date, Zadok1:Zadok100) %>%
+#  mutate(GSTD = as.numeric(gsub("Zadok", "", GSTD))) %>%
+#  mutate(Date = as.POSIXct(Date,format="%d/%m/%Y", tz="UTC")) %>%
+#  filter(!is.na(Date)) %>%
+#  mutate(situation=TRNO)
+#obs_list <- obs_data_final %>%
+#  select(Date, GSTD, situation) %>%
+#  group_split(situation)
+#names(obs_list) <- sapply(obs_list, function(x) x$situation[1])
+#obs_list <- lapply(obs_list, function(x) select(x,!situation))
+#obs_list <- lapply(obs_list,function(x) x[!duplicated(x$Date),])  # filter observations that have the same dates
+
+# If you want to take into account only a sub-part of the observed stages, e.g. GSTD==30 and GTD==55, proceed as in the following line
+# obs_list <- lapply(obs_list, function(x) filter(x,GSTD==30 | GSTD==55))
+#-----------
+
 # Give information on the parameters to estimate : 
 
 ## Names of obligatory parameters
+
 oblig_param_list <- 
 
 ## Names of additional candidate parameters
@@ -122,36 +150,36 @@ param_names <- c(oblig_param_list,add_param_list)
 
 param_info_tot <- 
 
-
 ### Vectors of lower and upper bounds for initial values sampling 
 ### (only needed if param_info_tot$init_values is not provided or if values are not provided 
 ###  for all parameters AND repetitions). 
 ### Can be different or same as param_info_tot$lb and param_info_tot$ub, as you want.
 ### e.g. lb_initV <- c(p1=0, p2=3, p3=100)
 ###      ub_initV <- c(p1=1, p2=7, p3=300)
+
 lb_initV <- 
-ub_initV <- 																							 
+ub_initV <- 																						 
 
 # Define parameter estimation algorithm options
-optim_options=list(path_results = getwd(), # path where to store the results (graph and Rdata)
-                   nb_rep = 4,             # Number of repetitions of the minimization
+optim_options=list(path_results = pathObsFile, # path where to store the results (graph and Rdata)
+              #     nb_rep = 8,             # Number of repetitions of the minimization
                    ranseed = 1234,         # set random seed so that each execution give the same results
-                                           # If you want randomization, don't set it.
-                   maxeval=500)            # Maximal number of criterion evaluation
-                                           # SET IT TO A LOW VALUE (e.g. 3) TO TEST THE SCRIPT to dramatically 
-										                       # reduce computational cost
-                                           # SET IT TO A LARGE VALUE (> 500) FOR REAL APPLICATION OF THE PROTOCOL 
-							
-							
-#########################################################################################################################
+                   # If you want randomization, don't set it.
+                   maxeval=500)            # 500 Maximal number of criterion evaluation
+# SET IT TO A LOW VALUE (e.g. 3) TO TEST THE SCRIPT to dramatically 
+# reduce computational cost
+# SET IT TO A LARGE VALUE (> 500) FOR REAL APPLICATION OF THE PROTOCOL 
+# Number of repetitions: if nb_rep includes only one value, all steps will use the same number of repetitions
+#                        if nb_rep includes 2 values, the first step will use the first value as repetition number and ALL the others will use the second values
+#                        otherwise, nb_rep can include as many values as number of steps if you want to define different values for each step
+nb_rep <- c(20,5) 
 
-
+##########################################
 main_function_guidelines(optim_options, oblig_param_list, add_param_list, 
                          param_info_tot, lb_initV, ub_initV, obs_list, 
-                         model_function, model_options, info_crit_name="AICc")
-
+                         model_function, model_options, info_crit_name="AICc",nb_rep=nb_rep)
 main_function_guidelines(optim_options, oblig_param_list, add_param_list, 
                          param_info_tot, lb_initV, ub_initV, obs_list, 
-                         model_function, model_options, info_crit_name="BIC")
-						 
+                         model_function, model_options, info_crit_name="BIC",nb_rep=nb_rep)
+
 print(paste0("Results saved in ",optim_options$path_results))
